@@ -38,7 +38,7 @@ export function useAuth() {
         if (isMounted) {
           setProfile({
             id: userId,
-            role: metadata.role || 'user',
+            role: 'user',
             full_name: metadata.full_name || null,
           });
         }

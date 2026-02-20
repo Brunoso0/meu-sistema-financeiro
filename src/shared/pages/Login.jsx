@@ -6,11 +6,19 @@ import { toast } from 'react-toastify';
 import '../styles/login.css';
 
 export default function Login() {
+  const MAX_FAILED_ATTEMPTS = 5;
+  const BLOCK_TIME_MS = 30_000;
+
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [registerData, setRegisterData] = useState({ fullName: '', email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [blockedUntil, setBlockedUntil] = useState(0);
+
+  const remainingBlockSeconds = Math.max(0, Math.ceil((blockedUntil - Date.now()) / 1000));
+  const isBlocked = remainingBlockSeconds > 0;
 
   const toggleMode = () => {
     setIsRegisterMode((prev) => !prev);
@@ -19,12 +27,28 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (isBlocked) {
+      setLoginError(`Muitas tentativas. Aguarde ${remainingBlockSeconds}s e tente novamente.`);
+      return;
+    }
+
     try {
       setLoading(true);
       setLoginError('');
       await authService.login(formData.email, formData.password);
+      setFailedAttempts(0);
     } catch (error) {
-      setLoginError(error.message || 'Email ou senha incorretos.');
+      const nextAttempts = failedAttempts + 1;
+      setFailedAttempts(nextAttempts);
+
+      if (nextAttempts >= MAX_FAILED_ATTEMPTS) {
+        setBlockedUntil(Date.now() + BLOCK_TIME_MS);
+        setFailedAttempts(0);
+        setLoginError('Muitas tentativas inválidas. Aguarde 30s e tente novamente.');
+      } else {
+        setLoginError('Credenciais inválidas.');
+      }
     } finally {
       setLoading(false);
     }
@@ -32,15 +56,31 @@ export default function Login() {
 
   const handleRegisterSubmit = async (e) => {
     e.preventDefault();
+
+    if (isBlocked) {
+      toast.error(`Muitas tentativas. Aguarde ${remainingBlockSeconds}s e tente novamente.`);
+      return;
+    }
+
     try {
       setLoading(true);
       await authService.register(registerData.email, registerData.password, registerData.fullName);
       toast.success('Conta criada! Verifique seu e-mail para confirmar o cadastro.');
+      setFailedAttempts(0);
       setFormData({ email: registerData.email, password: '' });
       setRegisterData({ fullName: '', email: '', password: '' });
       setIsRegisterMode(false);
     } catch (error) {
-      toast.error(error.message || 'Erro ao criar conta.');
+      const nextAttempts = failedAttempts + 1;
+      setFailedAttempts(nextAttempts);
+
+      if (nextAttempts >= MAX_FAILED_ATTEMPTS) {
+        setBlockedUntil(Date.now() + BLOCK_TIME_MS);
+        setFailedAttempts(0);
+        toast.error('Muitas tentativas inválidas. Aguarde 30s e tente novamente.');
+      } else {
+        toast.error('Não foi possível concluir o cadastro. Verifique os dados e tente novamente.');
+      }
     } finally {
       setLoading(false);
     }
@@ -97,7 +137,7 @@ export default function Login() {
               </div>
 
               <Button type="submit" icon={Lock} className="login-submit-btn">
-                {loading ? 'Criando conta...' : 'Criar Conta'}
+                {loading ? 'Criando conta...' : isBlocked ? `Aguarde ${remainingBlockSeconds}s` : 'Criar Conta'}
               </Button>
             </form>
           ) : (
@@ -134,7 +174,7 @@ export default function Login() {
               )}
 
               <Button type="submit" icon={Lock} className="login-submit-btn">
-                {loading ? 'Entrando...' : 'Entrar no Sistema'}
+                {loading ? 'Entrando...' : isBlocked ? `Aguarde ${remainingBlockSeconds}s` : 'Entrar no Sistema'}
               </Button>
             </form>
           )}

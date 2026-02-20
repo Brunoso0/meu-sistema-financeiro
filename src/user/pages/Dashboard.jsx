@@ -161,7 +161,7 @@ export default function Dashboard() {
         date: formData.date,
       };
 
-      await transactionService.addTransaction(payload, user.id);
+      await transactionService.addTransaction(payload);
       setFormData({
         description: '',
         amount: '',

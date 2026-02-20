@@ -12,8 +12,8 @@ export default function Register() {
     try {
       await authService.register(formData.email, formData.password, formData.name);
       toast.success('Conta criada! Verifique seu e-mail.');
-    } catch (err) {
-      toast.error(err.message || 'Erro ao criar conta.');
+    } catch {
+      toast.error('Não foi possível concluir o cadastro. Verifique os dados e tente novamente.');
     }
   };
 
