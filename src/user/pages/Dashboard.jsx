@@ -16,14 +16,21 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
+  Moon,
+  Sun,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { transactionService } from '../services/transactionsService';
+import { creditCardService } from '../../shared/services/creditCardService';
+import { calculateInstallmentAmounts, calculateInstallmentDueDate } from '../../shared/services/installmentUtils';
 import { useAuth } from '../../shared/hooks/useAuth';
 import { authService } from '../../shared/services/authService';
 import Card from '../../shared/components/Card';
 import Button from '../../shared/components/Button';
+import DatePicker from '../../shared/components/DatePicker';
 import '../styles/dashboard.css';
+
+const NEW_CARD_OPTION = '__new_card__';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -31,7 +38,21 @@ export default function Dashboard() {
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
 
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem('dashboard-theme');
+    return saved || 'light';
+  });
+  const [showThemeAnimation, setShowThemeAnimation] = useState(false);
+
   const [transactions, setTransactions] = useState([]);
+  const [creditCards, setCreditCards] = useState([]);
+  const [cardsLoading, setCardsLoading] = useState(false);
+  const [showCardModal, setShowCardModal] = useState(false);
+  const [newCardData, setNewCardData] = useState({
+    bankName: '',
+    closingDay: '',
+    dueDay: '',
+  });
   const [loading, setLoading] = useState(true);
   const [viewDate, setViewDate] = useState(new Date());
   const [formData, setFormData] = useState({
@@ -41,11 +62,27 @@ export default function Dashboard() {
     category: 'Outros',
     recurring: false,
     date: todayStr,
+    paymentMethod: 'debit',
+    creditCardId: '',
+    installments: 1,
   });
+
+  useEffect(() => {
+    localStorage.setItem('dashboard-theme', theme);
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('dashboard-theme');
+    if (saved) {
+      document.documentElement.setAttribute('data-theme', saved);
+    }
+  }, []);
 
   useEffect(() => {
     if (user?.id) {
       loadTransactions();
+      loadCreditCards();
     }
   }, [user?.id]);
 
@@ -58,6 +95,27 @@ export default function Dashboard() {
       toast.error('Erro ao carregar transações.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadCreditCards() {
+    try {
+      setCardsLoading(true);
+      const data = await creditCardService.getCreditCards();
+      setCreditCards(data);
+    } catch (error) {
+      console.error('Erro ao carregar cartões:', error);
+      
+      if (error?.code === 'PGRST204' || error?.message?.includes('credit_cards')) {
+        console.warn('Tabela credit_cards não configurada. Execute o SQL em supabase/create_credit_cards_table.sql');
+        toast.info('Tabelas de cartão de crédito não configuradas. Contate o administrador.');
+      } else {
+        toast.error('Erro ao carregar cartões de crédito.');
+      }
+      
+      setCreditCards([]);
+    } finally {
+      setCardsLoading(false);
     }
   }
 
@@ -152,16 +210,54 @@ export default function Dashboard() {
     }
 
     try {
-      const payload = {
-        description: formData.description,
-        amount: Number(formData.amount),
-        type: formData.type,
-        category: formData.category,
-        recurring: formData.recurring,
-        date: formData.date,
-      };
+      if (isCreditExpense) {
+        if (!formData.creditCardId) {
+          showMessage('Selecione um cartão de crédito.', 'error');
+          return;
+        }
 
-      await transactionService.addTransaction(payload);
+        const selectedCard = creditCards.find((card) => String(card.id) === String(formData.creditCardId));
+
+        if (!selectedCard) {
+          showMessage('Cartão selecionado inválido.', 'error');
+          return;
+        }
+
+        const installments = Math.max(1, Math.min(24, Number(formData.installments) || 1));
+        const installmentAmounts = calculateInstallmentAmounts(
+          Number(formData.amount),
+          installments,
+          Number(selectedCard.interest_rate) || 0,
+        );
+
+        const payload = installmentAmounts.map((installmentAmount, index) => ({
+          description: installments > 1 ? `${formData.description} (${index + 1}/${installments})` : formData.description,
+          amount: installmentAmount,
+          type: formData.type,
+          category: formData.category,
+          recurring: false,
+          date: calculateInstallmentDueDate(
+            formData.date,
+            Number(selectedCard.closing_day),
+            Number(selectedCard.due_day),
+            index + 1,
+          ),
+        }));
+
+        await transactionService.addTransaction(payload);
+      } else {
+        const payload = {
+          description: formData.description,
+          amount: Number(formData.amount),
+          type: formData.type,
+          category: formData.category,
+          recurring: formData.recurring,
+          date: formData.date,
+        };
+
+        await transactionService.addTransaction(payload);
+      }
+
       setFormData({
         description: '',
         amount: '',
@@ -169,6 +265,9 @@ export default function Dashboard() {
         category: 'Outros',
         recurring: false,
         date: formData.date,
+        paymentMethod: formData.paymentMethod,
+        creditCardId: '',
+        installments: 1,
       });
       await loadTransactions();
       showMessage('Lançamento salvo na nuvem!', 'success');
@@ -194,6 +293,12 @@ export default function Dashboard() {
     } catch {
       showMessage('Erro ao sair da conta.', 'error');
     }
+  };
+
+  const toggleTheme = () => {
+    setShowThemeAnimation(true);
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+    setTimeout(() => setShowThemeAnimation(false), 600);
   };
 
   const exportData = () => {
@@ -236,6 +341,44 @@ export default function Dashboard() {
 
   const formatBRL = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
+  const isCreditExpense = formData.type === 'expense' && formData.paymentMethod === 'credit';
+
+  const handleCreateCreditCard = async () => {
+    const closingDay = Number(newCardData.closingDay);
+    const dueDay = Number(newCardData.dueDay);
+
+    if (!newCardData.bankName.trim()) {
+      showMessage('Informe o nome do banco.', 'error');
+      return;
+    }
+
+    if (closingDay < 1 || closingDay > 31 || dueDay < 1 || dueDay > 31) {
+      showMessage('Dia de fechamento e vencimento devem estar entre 1 e 31.', 'error');
+      return;
+    }
+
+    try {
+      const createdCard = await creditCardService.addCreditCard({
+        bank_name: newCardData.bankName.trim(),
+        interest_rate: 0,
+        closing_day: closingDay,
+        due_day: dueDay,
+      });
+
+      await loadCreditCards();
+      setShowCardModal(false);
+      setFormData((prev) => ({ ...prev, creditCardId: createdCard.id }));
+      setNewCardData({
+        bankName: '',
+        closingDay: '',
+        dueDay: '',
+      });
+      showMessage('Cartão cadastrado com sucesso!', 'success');
+    } catch {
+      showMessage('Falha ao cadastrar cartão.', 'error');
+    }
+  };
+
   return (
     <div className="dashboard-container">
       <header className="dashboard-topbar">
@@ -261,6 +404,15 @@ export default function Dashboard() {
             onChange={importData}
             accept=".json"
           /> */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className={`theme-toggle ${showThemeAnimation ? 'theme-toggle-animate' : ''}`}
+            title={theme === 'light' ? 'Ativar modo escuro' : 'Ativar modo claro'}
+            aria-label="Alternar tema"
+          >
+            {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+          </button>
           <div className="divider" />
           <Button variant="ghost" onClick={handleLogout} className="logout-btn">
             <LogOut size={18} />
@@ -371,14 +523,28 @@ export default function Dashboard() {
               <div className="type-toggle">
                 <button
                   type="button"
-                  onClick={() => setFormData({ ...formData, type: 'income' })}
+                  onClick={() =>
+                    setFormData({
+                      ...formData,
+                      type: 'income',
+                      paymentMethod: 'debit',
+                      creditCardId: '',
+                      installments: 1,
+                    })
+                  }
                   className={formData.type === 'income' ? 'active-income' : ''}
                 >
                   Entrada
                 </button>
                 <button
                   type="button"
-                  onClick={() => setFormData({ ...formData, type: 'expense' })}
+                  onClick={() =>
+                    setFormData({
+                      ...formData,
+                      type: 'expense',
+                      paymentMethod: formData.paymentMethod || 'debit',
+                    })
+                  }
                   className={formData.type === 'expense' ? 'active-expense' : ''}
                 >
                   Saída
@@ -407,15 +573,12 @@ export default function Dashboard() {
                     required
                   />
                 </label>
-                <label>
-                  DATA
-                  <input
-                    type="date"
-                    value={formData.date}
-                    onChange={(event) => setFormData({ ...formData, date: event.target.value })}
-                    required
-                  />
-                </label>
+                <DatePicker
+                  label="DATA"
+                  value={formData.date}
+                  onChange={(event) => setFormData({ ...formData, date: event.target.value })}
+                  required
+                />
               </div>
 
               <label>
@@ -445,17 +608,92 @@ export default function Dashboard() {
                 </select>
               </label>
 
-              <label className="recurring-box">
-                <input
-                  type="checkbox"
-                  checked={formData.recurring}
-                  onChange={(event) => setFormData({ ...formData, recurring: event.target.checked })}
-                />
-                <div className="recurring-content">
-                  <span>Repetir todo mês?</span>
-                  <small>{formData.type === 'income' ? 'Para salários e renda fixa' : 'Para aluguel, internet, etc'}</small>
-                </div>
-              </label>
+              {formData.type === 'expense' && (
+                <>
+                  <div className="payment-toggle">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormData({
+                          ...formData,
+                          paymentMethod: 'debit',
+                          creditCardId: '',
+                          installments: 1,
+                        })
+                      }
+                      className={formData.paymentMethod === 'debit' ? 'active-payment' : ''}
+                    >
+                      Débito/Dinheiro
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, paymentMethod: 'credit' })}
+                      className={formData.paymentMethod === 'credit' ? 'active-payment' : ''}
+                    >
+                      Cartão de Crédito
+                    </button>
+                  </div>
+
+                  {isCreditExpense && (
+                    <>
+                      <label>
+                        CARTÃO DE CRÉDITO
+                        <select
+                          value={formData.creditCardId || ''}
+                          onChange={(event) => {
+                            const selectedValue = event.target.value;
+
+                            if (selectedValue === NEW_CARD_OPTION) {
+                              setShowCardModal(true);
+                              setFormData({ ...formData, creditCardId: '' });
+                              return;
+                            }
+
+                            setShowCardModal(false);
+                            setFormData({ ...formData, creditCardId: selectedValue });
+                          }}
+                          required
+                        >
+                          <option value="">Selecione um cartão...</option>
+                          {creditCards.map((card) => (
+                            <option key={card.id} value={card.id}>
+                              {card.bank_name} • Fecha {card.closing_day} • Vence {card.due_day}
+                            </option>
+                          ))}
+                          <option value={NEW_CARD_OPTION}>Adicionar Novo Cartão...</option>
+                        </select>
+                        {cardsLoading && <small className="field-hint">Carregando cartões...</small>}
+                      </label>
+
+                      <label>
+                        PARCELAS
+                        <input
+                          type="number"
+                          min="1"
+                          max="24"
+                          value={formData.installments}
+                          onChange={(event) => setFormData({ ...formData, installments: event.target.value })}
+                          required
+                        />
+                      </label>
+                    </>
+                  )}
+                </>
+              )}
+
+              {!isCreditExpense && (
+                <label className="recurring-box">
+                  <input
+                    type="checkbox"
+                    checked={formData.recurring}
+                    onChange={(event) => setFormData({ ...formData, recurring: event.target.checked })}
+                  />
+                  <div className="recurring-content">
+                    <span>Repetir todo mês?</span>
+                    <small>{formData.type === 'income' ? 'Para salários e renda fixa' : 'Para aluguel, internet, etc'}</small>
+                  </div>
+                </label>
+              )}
 
               <Button type="submit" className="full-btn">Salvar Lançamento</Button>
             </form>
@@ -515,6 +753,76 @@ export default function Dashboard() {
           </Card>
         </section>
       </div>
+
+      {showCardModal && (
+        <div className="modal-overlay" onClick={() => setShowCardModal(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Cadastrar Novo Cartão</h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setShowCardModal(false)}
+                aria-label="Fechar"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="modal-body">
+              <label>
+                BANCO
+                <input
+                  placeholder="Ex: Nubank, Itaú, Bradesco"
+                  value={newCardData.bankName}
+                  onChange={(event) => setNewCardData({ ...newCardData, bankName: event.target.value })}
+                  autoFocus
+                />
+              </label>
+              <div className="form-row">
+                <label>
+                  FECHAMENTO DO CARTÃO
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    placeholder="Ex: 10"
+                    value={newCardData.closingDay}
+                    onChange={(event) => setNewCardData({ ...newCardData, closingDay: event.target.value })}
+                  />
+                </label>
+                <label>
+                  VENCIMENTO DA FATURA
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    placeholder="Ex: 20"
+                    value={newCardData.dueDay}
+                    onChange={(event) => setNewCardData({ ...newCardData, dueDay: event.target.value })}
+                  />
+                </label>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setShowCardModal(false)}
+                className="modal-btn-secondary"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={handleCreateCreditCard}
+                className="modal-btn-primary"
+              >
+                Salvar Cartão
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -3,7 +3,7 @@ import Login from './shared/pages/Login.jsx';
 import Register from './shared/pages/Register.jsx';
 import UserDashboard from './user/pages/Dashboard.jsx';
 import AdminDashboard from './admin/pages/Dashboard.jsx';
-import { useAuth } from './shared/hooks/useAuth'; // Hook que criaremos
+import { useAuth } from './shared/hooks/useAuth';
 
 export default function App() {
   const { user, profile, loading } = useAuth();

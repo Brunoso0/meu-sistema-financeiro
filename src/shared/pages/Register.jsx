@@ -27,8 +27,38 @@ export default function Register() {
           <h1 className="text-2xl font-bold">Criar Conta</h1>
           <p className="text-slate-500">Comece a gerenciar suas finanças hoje</p>
         </div>
-        
-        {/* Formulário similar ao seu de Login, adicionando campo de Nome */}
+        <form onSubmit={handleRegister} className="space-y-4">
+          <input
+            type="text"
+            placeholder="Nome"
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            required
+            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          <input
+            type="email"
+            placeholder="E-mail"
+            value={formData.email}
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            required
+            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          <input
+            type="password"
+            placeholder="Senha"
+            value={formData.password}
+            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+            required
+            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          <button
+            type="submit"
+            className="w-full bg-emerald-500 text-white py-2 rounded-lg font-semibold hover:bg-emerald-600"
+          >
+            Criar Conta
+          </button>
+        </form>
       </div>
     </div>
   );

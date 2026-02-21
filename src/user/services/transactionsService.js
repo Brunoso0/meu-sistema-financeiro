@@ -14,7 +14,6 @@ export const transactionService = {
     return user.id;
   },
 
-  // Buscar transações do usuário logado
   async getTransactions() {
     const userId = await this.getAuthenticatedUserId();
 
@@ -28,19 +27,22 @@ export const transactionService = {
     return data;
   },
 
-  // Adicionar novo lançamento
+  // Adicionar novo lançamento (suporta objeto único ou array)
   async addTransaction(transactionData) {
     const userId = await this.getAuthenticatedUserId();
 
+    const payload = Array.isArray(transactionData)
+      ? transactionData.map((item) => ({ ...item, user_id: userId }))
+      : [{ ...transactionData, user_id: userId }];
+
     const { data, error } = await supabase
       .from('transactions')
-      .insert([{ ...transactionData, user_id: userId }]);
+      .insert(payload);
     
     if (error) throw error;
     return data;
   },
 
-  // Remover lançamento
   async deleteTransaction(id) {
     const userId = await this.getAuthenticatedUserId();
 
