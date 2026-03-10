@@ -53,6 +53,8 @@ export const creditCardService = {
       interest_rate: Number(cardData.interest_rate) || 0,
       closing_day: Number(cardData.closing_day),
       due_day: Number(cardData.due_day),
+      credit_limit: Number(cardData.credit_limit) || 0,
+      last_four_digits: cardData.last_four_digits?.trim() || null,
       user_id: userId,
     };
 
@@ -66,6 +68,29 @@ export const creditCardService = {
       throw error;
     }
 
+    return data?.[0] || null;
+  },
+
+  async updateCreditCard(id, cardData) {
+    const userId = await this.getAuthenticatedUserId();
+
+    const payload = {
+      bank_name: cardData.bank_name?.trim(),
+      interest_rate: Number(cardData.interest_rate) || 0,
+      closing_day: Number(cardData.closing_day),
+      due_day: Number(cardData.due_day),
+      credit_limit: Number(cardData.credit_limit) || 0,
+      last_four_digits: cardData.last_four_digits?.trim() || null,
+    };
+
+    const { data, error } = await supabase
+      .from('credit_cards')
+      .update(payload)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select();
+
+    if (error) throw error;
     return data?.[0] || null;
   },
 };

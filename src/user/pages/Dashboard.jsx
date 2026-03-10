@@ -4,6 +4,7 @@ import {
   TrendingUp,
   TrendingDown,
   DollarSign,
+  BarChart3,
   PieChart,
   Plus,
   Trash2,
@@ -15,6 +16,8 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
+  Pencil,
+  LayoutDashboard,
   LogOut,
   Moon,
   Sun,
@@ -31,6 +34,29 @@ import DatePicker from '../../shared/components/DatePicker';
 import '../styles/dashboard.css';
 
 const NEW_CARD_OPTION = '__new_card__';
+const CARD_TAG_PREFIX = '[card:';
+
+function parseCardTag(description = '') {
+  const match = String(description).match(/\s\[card:([^\]]+)\]\s*$/i);
+
+  if (!match) {
+    return {
+      isCardTransaction: false,
+      cardName: '',
+      cleanDescription: description,
+    };
+  }
+
+  return {
+    isCardTransaction: true,
+    cardName: match[1].trim(),
+    cleanDescription: String(description).replace(/\s\[card:[^\]]+\]\s*$/i, '').trim(),
+  };
+}
+
+function buildCardTaggedDescription(description, cardName) {
+  return `${String(description).trim()} ${CARD_TAG_PREFIX}${String(cardName).trim()}]`;
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -43,6 +69,46 @@ export default function Dashboard() {
     return saved || 'light';
   });
   const [showThemeAnimation, setShowThemeAnimation] = useState(false);
+  const [savingsGoalPercent, setSavingsGoalPercent] = useState(() => {
+    const saved = localStorage.getItem('dashboard-savings-goal-percent');
+    const parsed = Number(saved);
+    return Number.isFinite(parsed) ? Math.min(100, Math.max(0, parsed)) : 20;
+  });
+  const [isEditingSavingsGoal, setIsEditingSavingsGoal] = useState(false);
+  const [draftSavingsGoalPercent, setDraftSavingsGoalPercent] = useState('20');
+  const [expandedCardGroups, setExpandedCardGroups] = useState({});
+  const [investmentForm, setInvestmentForm] = useState(() => {
+    const saved = localStorage.getItem('dashboard-investment-form');
+
+    if (!saved) {
+      return {
+        targetAmount: '100000',
+        initialAmount: '0',
+        monthlyContribution: '1000',
+        annualRate: '10',
+        years: '10',
+      };
+    }
+
+    try {
+      const parsed = JSON.parse(saved);
+      return {
+        targetAmount: String(parsed.targetAmount ?? '100000'),
+        initialAmount: String(parsed.initialAmount ?? '0'),
+        monthlyContribution: String(parsed.monthlyContribution ?? '1000'),
+        annualRate: String(parsed.annualRate ?? '10'),
+        years: String(parsed.years ?? '10'),
+      };
+    } catch {
+      return {
+        targetAmount: '100000',
+        initialAmount: '0',
+        monthlyContribution: '1000',
+        annualRate: '10',
+        years: '10',
+      };
+    }
+  });
 
   const [transactions, setTransactions] = useState([]);
   const [creditCards, setCreditCards] = useState([]);
@@ -71,6 +137,18 @@ export default function Dashboard() {
     localStorage.setItem('dashboard-theme', theme);
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem('dashboard-savings-goal-percent', String(savingsGoalPercent));
+  }, [savingsGoalPercent]);
+
+  useEffect(() => {
+    setDraftSavingsGoalPercent(String(savingsGoalPercent));
+  }, [savingsGoalPercent]);
+
+  useEffect(() => {
+    localStorage.setItem('dashboard-investment-form', JSON.stringify(investmentForm));
+  }, [investmentForm]);
 
   useEffect(() => {
     const saved = localStorage.getItem('dashboard-theme');
@@ -183,7 +261,7 @@ export default function Dashboard() {
     const balance = totalIncome - totalExpenses;
     const needsLimit = totalIncome * 0.5;
     const wantsLimit = totalIncome * 0.3;
-    const savingsGoal = totalIncome * 0.2;
+    const savingsGoal = totalIncome * (savingsGoalPercent / 100);
     const availableForVariable = Math.max(0, totalIncome - fixedExpenses - savingsGoal);
     const safeToSpend = Math.max(0, availableForVariable - variableExpenses);
 
@@ -199,7 +277,125 @@ export default function Dashboard() {
       availableForVariable,
       safeToSpend,
     };
+  }, [filteredTransactions, savingsGoalPercent]);
+
+  const statementItems = useMemo(() => {
+    const cardGroupsMap = new Map();
+    const regularTransactions = [];
+
+    filteredTransactions.forEach((transaction) => {
+      const { isCardTransaction, cardName, cleanDescription } = parseCardTag(transaction.description);
+
+      if (transaction.type === 'expense' && isCardTransaction && cardName) {
+        const key = cardName.toLowerCase();
+        const group = cardGroupsMap.get(key) ?? {
+          key,
+          cardName,
+          totalAmount: 0,
+          latestDate: null,
+          transactions: [],
+        };
+
+        const txDate = safeDate(transaction.date);
+        group.totalAmount += Number(transaction.amount);
+        group.latestDate = !group.latestDate || txDate > group.latestDate ? txDate : group.latestDate;
+        group.transactions.push({
+          ...transaction,
+          description: cleanDescription,
+        });
+        cardGroupsMap.set(key, group);
+        return;
+      }
+
+      regularTransactions.push(transaction);
+    });
+
+    const groupedCardItems = Array.from(cardGroupsMap.values()).map((group) => ({
+      kind: 'card-group',
+      id: `card-group-${group.key}`,
+      cardName: group.cardName,
+      totalAmount: group.totalAmount,
+      date: group.latestDate,
+      transactions: group.transactions.sort((a, b) => safeDate(b.date) - safeDate(a.date)),
+    }));
+
+    const regularItems = regularTransactions.map((transaction) => ({
+      kind: 'transaction',
+      id: transaction.id,
+      transaction,
+      date: safeDate(transaction.date),
+    }));
+
+    return [...groupedCardItems, ...regularItems].sort((a, b) => b.date - a.date);
   }, [filteredTransactions]);
+
+  const categoryExpenseChart = useMemo(() => {
+    const expenses = filteredTransactions.filter((transaction) => transaction.type === 'expense');
+    const totalsByCategory = expenses.reduce((accumulator, transaction) => {
+      const category = transaction.category || 'Outros';
+      accumulator[category] = (accumulator[category] || 0) + Number(transaction.amount);
+      return accumulator;
+    }, {});
+
+    return Object.entries(totalsByCategory)
+      .map(([category, total]) => ({ category, total }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 6);
+  }, [filteredTransactions]);
+
+  const overviewChartItems = useMemo(() => {
+    return [
+      { label: 'Renda', value: financialSummary.totalIncome },
+      { label: 'Despesa', value: financialSummary.totalExpenses },
+      { label: 'Fixas', value: financialSummary.fixedExpenses },
+      { label: 'Variáveis', value: financialSummary.variableExpenses },
+    ];
+  }, [financialSummary]);
+
+  const maxOverviewValue = Math.max(...overviewChartItems.map((item) => item.value), 1);
+  const maxCategoryValue = Math.max(...categoryExpenseChart.map((item) => item.total), 1);
+
+  const investmentProjection = useMemo(() => {
+    const targetAmount = Math.max(0, Number(investmentForm.targetAmount) || 0);
+    const initialAmount = Math.max(0, Number(investmentForm.initialAmount) || 0);
+    const monthlyContribution = Math.max(0, Number(investmentForm.monthlyContribution) || 0);
+    const annualRate = Math.max(0, Number(investmentForm.annualRate) || 0) / 100;
+    const years = Math.max(0, Number(investmentForm.years) || 0);
+    const months = Math.round(years * 12);
+
+    const monthlyRate = Math.pow(1 + annualRate, 1 / 12) - 1;
+
+    const investedCapital = initialAmount + monthlyContribution * months;
+    let projectedAmount = investedCapital;
+
+    if (months > 0) {
+      if (monthlyRate > 0) {
+        projectedAmount =
+          initialAmount * Math.pow(1 + monthlyRate, months) +
+          monthlyContribution * ((Math.pow(1 + monthlyRate, months) - 1) / monthlyRate);
+      }
+    }
+
+    const estimatedEarnings = Math.max(0, projectedAmount - investedCapital);
+    const progressPercent = targetAmount > 0 ? Math.min((projectedAmount / targetAmount) * 100, 100) : 0;
+
+    return {
+      targetAmount,
+      projectedAmount,
+      investedCapital,
+      estimatedEarnings,
+      progressPercent,
+      months,
+    };
+  }, [investmentForm]);
+
+  const saveSavingsGoalPercent = () => {
+    const parsed = Number(draftSavingsGoalPercent);
+    const nextValue = Number.isFinite(parsed) ? Math.min(100, Math.max(0, parsed)) : savingsGoalPercent;
+    setSavingsGoalPercent(nextValue);
+    setDraftSavingsGoalPercent(String(nextValue));
+    setIsEditingSavingsGoal(false);
+  };
 
   const handleAddTransaction = async (e) => {
     e.preventDefault();
@@ -231,7 +427,10 @@ export default function Dashboard() {
         );
 
         const payload = installmentAmounts.map((installmentAmount, index) => ({
-          description: installments > 1 ? `${formData.description} (${index + 1}/${installments})` : formData.description,
+          description: buildCardTaggedDescription(
+            installments > 1 ? `${formData.description} (${index + 1}/${installments})` : formData.description,
+            selectedCard.bank_name,
+          ),
           amount: installmentAmount,
           type: formData.type,
           category: formData.category,
@@ -343,6 +542,13 @@ export default function Dashboard() {
 
   const isCreditExpense = formData.type === 'expense' && formData.paymentMethod === 'credit';
 
+  const toggleCardGroup = (groupId) => {
+    setExpandedCardGroups((prev) => ({
+      ...prev,
+      [groupId]: !prev[groupId],
+    }));
+  };
+
   const handleCreateCreditCard = async () => {
     const closingDay = Number(newCardData.closingDay);
     const dueDay = Number(newCardData.dueDay);
@@ -380,7 +586,17 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="dashboard-container">
+    <div className="dashboard-shell">
+      <aside className="dashboard-sidebar">
+        <div className="sidebar-title">Visão Geral</div>
+        <a href="#resumo" className="sidebar-link"><LayoutDashboard size={14} /> Resumo</a>
+        <a href="#planejamento" className="sidebar-link"><PieChart size={14} /> Planejamento</a>
+        <a href="#investimentos" className="sidebar-link"><Target size={14} /> Investimentos</a>
+        <a href="#lancamentos" className="sidebar-link"><Plus size={14} /> Lançamentos</a>
+        <a href="#graficos" className="sidebar-link"><BarChart3 size={14} /> Gráficos</a>
+      </aside>
+
+      <div className="dashboard-container">
       <header className="dashboard-topbar">
         <div className="topbar-main">
           <div className="brand-icon">
@@ -433,7 +649,7 @@ export default function Dashboard() {
         </Button>
       </div>
 
-      <section className="summary-grid">
+      <section id="resumo" className="summary-grid">
         <Card className="summary-card income-card">
           <div className="card-title">Renda em {viewDate.toLocaleString('default', { month: 'short' })} <TrendingUp size={18} /></div>
           <div className="card-value">{formatBRL(financialSummary.totalIncome)}</div>
@@ -453,7 +669,7 @@ export default function Dashboard() {
         </Card>
       </section>
 
-      <section>
+      <section id="planejamento">
         <div className="planning-header">
           <PieChart size={22} />
           <h2>Planejamento: {currentMonthName}</h2>
@@ -481,20 +697,58 @@ export default function Dashboard() {
             <div className="safe-spend-box">
               <span>Livre para Gastar (Variável)</span>
               <div className="safe-spend-value">{formatBRL(financialSummary.safeToSpend)}</div>
-              <p>Valor seguro para gastar, considerando contas fixas e metas de poupança (20%).</p>
+              <p>
+                Valor seguro para gastar, considerando contas fixas e metas de poupança ({savingsGoalPercent}%).
+              </p>
             </div>
           </Card>
 
           <Card>
-            <h3 className="section-title">Meta Ideal (50/30/20)</h3>
+            <h3 className="section-title">Meta de Poupança</h3>
 
             <div className="goal-item">
               <div className="goal-label">
                 <span className="goal-icon success"><CheckCircle2 size={14} /></span>
-                <span>Meta Poupança (20%)</span>
+                <span className="goal-inline-edit">
+                  Meta Poupança ({savingsGoalPercent}%)
+                  <button
+                    type="button"
+                    className="edit-goal-btn"
+                    onClick={() => setIsEditingSavingsGoal((prev) => !prev)}
+                    aria-label="Editar meta de poupança"
+                    title="Editar meta de poupança"
+                  >
+                    <Pencil size={13} />
+                  </button>
+                </span>
               </div>
               <strong className="goal-value-highlight">{formatBRL(financialSummary.savingsGoal)}</strong>
             </div>
+
+            {isEditingSavingsGoal && (
+              <div className="savings-goal-inline-editor">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={draftSavingsGoalPercent}
+                  onChange={(event) => setDraftSavingsGoalPercent(event.target.value)}
+                  onBlur={saveSavingsGoalPercent}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      saveSavingsGoalPercent();
+                    }
+
+                    if (event.key === 'Escape') {
+                      setDraftSavingsGoalPercent(String(savingsGoalPercent));
+                      setIsEditingSavingsGoal(false);
+                    }
+                  }}
+                  autoFocus
+                />
+                <span>% ao mês de renda</span>
+              </div>
+            )}
 
             <div className="goal-item">
               <div className="goal-label">
@@ -515,7 +769,101 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <div className="main-content">
+      <section id="investimentos">
+        <div className="planning-header">
+          <Target size={22} />
+          <h2>Investimentos</h2>
+        </div>
+
+        <div className="planning-grid">
+          <Card>
+            <h3 className="section-title">Meta de Investimento</h3>
+            <div className="investment-form-grid">
+              <label>
+                META (R$)
+                <input
+                  type="number"
+                  min="0"
+                  value={investmentForm.targetAmount}
+                  onChange={(event) => setInvestmentForm((prev) => ({ ...prev, targetAmount: event.target.value }))}
+                />
+              </label>
+
+              <label>
+                VALOR INICIAL (R$)
+                <input
+                  type="number"
+                  min="0"
+                  value={investmentForm.initialAmount}
+                  onChange={(event) => setInvestmentForm((prev) => ({ ...prev, initialAmount: event.target.value }))}
+                />
+              </label>
+
+              <label>
+                APORTE MENSAL (R$)
+                <input
+                  type="number"
+                  min="0"
+                  value={investmentForm.monthlyContribution}
+                  onChange={(event) => setInvestmentForm((prev) => ({ ...prev, monthlyContribution: event.target.value }))}
+                />
+              </label>
+
+              <label>
+                JUROS AO ANO (%)
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={investmentForm.annualRate}
+                  onChange={(event) => setInvestmentForm((prev) => ({ ...prev, annualRate: event.target.value }))}
+                />
+              </label>
+
+              <label>
+                PRAZO (ANOS)
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={investmentForm.years}
+                  onChange={(event) => setInvestmentForm((prev) => ({ ...prev, years: event.target.value }))}
+                />
+              </label>
+            </div>
+          </Card>
+
+          <Card>
+            <h3 className="section-title">Projeção em Tempo Real</h3>
+
+            <div className="goal-item">
+              <span>Valor projetado</span>
+              <strong className="goal-value-highlight">{formatBRL(investmentProjection.projectedAmount)}</strong>
+            </div>
+            <div className="goal-item">
+              <span>Capital investido</span>
+              <strong>{formatBRL(investmentProjection.investedCapital)}</strong>
+            </div>
+            <div className="goal-item">
+              <span>Rendimento estimado</span>
+              <strong>{formatBRL(investmentProjection.estimatedEarnings)}</strong>
+            </div>
+            <div className="goal-item no-border">
+              <span>Prazo total</span>
+              <strong>{investmentProjection.months} meses</strong>
+            </div>
+
+            <div className="progress-track investment-progress-track">
+              <div className="progress-fill" style={{ width: `${investmentProjection.progressPercent}%` }} />
+            </div>
+            <p className="investment-progress-text">
+              Progresso da meta: {investmentProjection.progressPercent.toFixed(1)}%
+            </p>
+          </Card>
+        </div>
+      </section>
+
+      <div id="lancamentos" className="main-content">
         <section className="form-section">
           <Card className="form-card">
             <h3 className="section-title"><Plus size={18} /> Adicionar Lançamento</h3>
@@ -706,7 +1054,7 @@ export default function Dashboard() {
           <Card className="statement-card">
             {loading ? (
               <div className="statement-empty">Carregando lançamentos...</div>
-            ) : filteredTransactions.length === 0 ? (
+            ) : statementItems.length === 0 ? (
               <div className="statement-empty">
                 <Calendar size={42} />
                 <p>Nenhuma transação prevista para este mês.</p>
@@ -714,45 +1062,153 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="statement-list">
-                {filteredTransactions.map((transaction) => (
-                  <div key={transaction.id} className="transaction-item">
-                    <div className="transaction-info">
-                      <div className={`icon-box ${transaction.type === 'income' ? 'income-icon' : 'expense-icon'}`}>
-                        {transaction.type === 'income' ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
-                      </div>
-                      <div>
-                        <p className="transaction-description">{transaction.description}</p>
-                        <div className="transaction-tags">
-                          <span className="tag">{transaction.category}</span>
-                          {transaction.recurring ? (
-                            <span className="tag recurring-tag">Fixa Mensal</span>
-                          ) : (
-                            <span className="tag date-tag">{safeDate(transaction.date).toLocaleDateString('pt-BR')}</span>
-                          )}
+                {statementItems.map((item) => (
+                  item.kind === 'card-group' ? (
+                    <div key={item.id} className="card-group-block">
+                      <div className="transaction-item card-group-item" onClick={() => toggleCardGroup(item.id)}>
+                        <div className="transaction-info">
+                          <div className="icon-box expense-icon">
+                            <TrendingDown size={16} />
+                          </div>
+                          <div>
+                            <p className="transaction-description">Cartão {item.cardName}</p>
+                            <div className="transaction-tags">
+                              <span className="tag">{item.transactions.length} lançamento(s)</span>
+                              <span className="tag date-tag">{safeDate(item.date).toLocaleDateString('pt-BR')}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="transaction-actions">
+                          <span className="value-negative">- {formatBRL(item.totalAmount)}</span>
+                          <button type="button" className="group-toggle-btn">
+                            {expandedCardGroups[item.id] ? 'Ocultar' : 'Ver'} gastos
+                          </button>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="transaction-actions">
-                      <span className={transaction.type === 'income' ? 'value-positive' : 'value-negative'}>
-                        {transaction.type === 'income' ? '+' : '-'} {formatBRL(transaction.amount)}
-                      </span>
-                      <button
-                        onClick={() => removeTransaction(transaction.id)}
-                        className="delete-btn"
-                        title="Remover"
-                        aria-label="Remover"
-                      >
-                        <Trash2 size={15} />
-                      </button>
+                      {expandedCardGroups[item.id] && (
+                        <div className="card-group-transactions">
+                          {item.transactions.map((transaction) => (
+                            <div key={transaction.id} className="transaction-item transaction-item-nested">
+                              <div className="transaction-info">
+                                <div className={`icon-box ${transaction.type === 'income' ? 'income-icon' : 'expense-icon'}`}>
+                                  {transaction.type === 'income' ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+                                </div>
+                                <div>
+                                  <p className="transaction-description">{transaction.description}</p>
+                                  <div className="transaction-tags">
+                                    <span className="tag">{transaction.category}</span>
+                                    <span className="tag date-tag">{safeDate(transaction.date).toLocaleDateString('pt-BR')}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="transaction-actions">
+                                <span className={transaction.type === 'income' ? 'value-positive' : 'value-negative'}>
+                                  {transaction.type === 'income' ? '+' : '-'} {formatBRL(transaction.amount)}
+                                </span>
+                                <button
+                                  onClick={() => removeTransaction(transaction.id)}
+                                  className="delete-btn"
+                                  title="Remover"
+                                  aria-label="Remover"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  </div>
+                  ) : (
+                    <div key={item.transaction.id} className="transaction-item">
+                      <div className="transaction-info">
+                        <div className={`icon-box ${item.transaction.type === 'income' ? 'income-icon' : 'expense-icon'}`}>
+                          {item.transaction.type === 'income' ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+                        </div>
+                        <div>
+                          <p className="transaction-description">{item.transaction.description}</p>
+                          <div className="transaction-tags">
+                            <span className="tag">{item.transaction.category}</span>
+                            {item.transaction.recurring ? (
+                              <span className="tag recurring-tag">Fixa Mensal</span>
+                            ) : (
+                              <span className="tag date-tag">{safeDate(item.transaction.date).toLocaleDateString('pt-BR')}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="transaction-actions">
+                        <span className={item.transaction.type === 'income' ? 'value-positive' : 'value-negative'}>
+                          {item.transaction.type === 'income' ? '+' : '-'} {formatBRL(item.transaction.amount)}
+                        </span>
+                        <button
+                          onClick={() => removeTransaction(item.transaction.id)}
+                          className="delete-btn"
+                          title="Remover"
+                          aria-label="Remover"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  )
                 ))}
               </div>
             )}
           </Card>
         </section>
       </div>
+
+      <section id="graficos">
+        <div className="planning-header">
+          <BarChart3 size={22} />
+          <h2>Dashboard em Gráficos</h2>
+        </div>
+
+        <div className="charts-grid">
+          <Card>
+            <h3 className="section-title">Visão Geral do Mês</h3>
+            <div className="chart-list">
+              {overviewChartItems.map((item) => (
+                <div key={item.label} className="chart-item">
+                  <div className="chart-item-head">
+                    <span>{item.label}</span>
+                    <strong>{formatBRL(item.value)}</strong>
+                  </div>
+                  <div className="chart-bar-track">
+                    <div className="chart-bar-fill" style={{ width: `${(item.value / maxOverviewValue) * 100}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card>
+            <h3 className="section-title">Despesas por Categoria</h3>
+            {categoryExpenseChart.length === 0 ? (
+              <div className="statement-empty">Sem despesas neste mês para gerar gráfico.</div>
+            ) : (
+              <div className="chart-list">
+                {categoryExpenseChart.map((item) => (
+                  <div key={item.category} className="chart-item">
+                    <div className="chart-item-head">
+                      <span>{item.category}</span>
+                      <strong>{formatBRL(item.total)}</strong>
+                    </div>
+                    <div className="chart-bar-track">
+                      <div className="chart-bar-fill" style={{ width: `${(item.total / maxCategoryValue) * 100}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+      </section>
 
       {showCardModal && (
         <div className="modal-overlay" onClick={() => setShowCardModal(false)}>
@@ -823,6 +1279,7 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

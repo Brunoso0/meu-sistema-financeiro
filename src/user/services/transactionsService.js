@@ -43,6 +43,39 @@ export const transactionService = {
     return data;
   },
 
+  async addInstallmentPurchase({
+    description,
+    amounts,
+    dates,
+    category,
+    cardId,
+    installmentGroupId,
+  }) {
+    const userId = await this.getAuthenticatedUserId();
+
+    const payload = amounts.map((installmentAmount, index) => ({
+      user_id: userId,
+      description,
+      amount: Number(installmentAmount),
+      type: 'expense',
+      category,
+      recurring: false,
+      date: dates[index],
+      card_id: cardId,
+      installment_current: index + 1,
+      installment_total: amounts.length,
+      installment_group_id: installmentGroupId,
+    }));
+
+    const { data, error } = await supabase
+      .from('transactions')
+      .insert(payload)
+      .select('*');
+
+    if (error) throw error;
+    return data;
+  },
+
   async deleteTransaction(id) {
     const userId = await this.getAuthenticatedUserId();
 
@@ -52,6 +85,18 @@ export const transactionService = {
       .eq('id', id)
       .eq('user_id', userId);
     
+    if (error) throw error;
+  },
+
+  async deleteInstallmentGroup(installmentGroupId) {
+    const userId = await this.getAuthenticatedUserId();
+
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('user_id', userId)
+      .eq('installment_group_id', installmentGroupId);
+
     if (error) throw error;
   }
 };
