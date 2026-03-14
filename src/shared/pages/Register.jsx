@@ -3,7 +3,6 @@ import { authService } from '../services/authService';
 import { Wallet } from 'lucide-react';
 import { toast } from 'react-toastify';
 
-// Use os componentes Card, Input e Button que você já tem no shared/components
 export default function Register() {
   const [formData, setFormData] = useState({ name: '', email: '', password: '' });
 

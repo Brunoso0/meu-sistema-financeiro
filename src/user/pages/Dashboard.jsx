@@ -31,6 +31,7 @@ import { authService } from '../../shared/services/authService';
 import Card from '../../shared/components/Card';
 import Button from '../../shared/components/Button';
 import DatePicker from '../../shared/components/DatePicker';
+import { getTransactionsForMonth } from '../utils/finance';
 import '../styles/dashboard.css';
 
 const NEW_CARD_OPTION = '__new_card__';
@@ -225,20 +226,7 @@ export default function Dashboard() {
   }).format(viewDate);
 
   const filteredTransactions = useMemo(() => {
-    const viewMonth = viewDate.getMonth();
-    const viewYear = viewDate.getFullYear();
-
-    return transactions.filter((transaction) => {
-      const transactionDate = safeDate(transaction.date);
-      const transactionMonth = transactionDate.getMonth();
-      const transactionYear = transactionDate.getFullYear();
-
-      if (transaction.recurring) {
-        return transactionYear < viewYear || (transactionYear === viewYear && transactionMonth <= viewMonth);
-      }
-
-      return transactionMonth === viewMonth && transactionYear === viewYear;
-    });
+    return getTransactionsForMonth(transactions, viewDate);
   }, [transactions, viewDate]);
 
   const financialSummary = useMemo(() => {
@@ -609,17 +597,6 @@ export default function Dashboard() {
         </div>
 
         <div className="topbar-actions">
-          {/* <Button variant="outline" onClick={exportData} icon={Download} className="small-btn">Salvar</Button>
-          <Button variant="secondary" onClick={() => fileInputRef.current?.click()} icon={Upload} className="small-btn">
-            Carregar
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden-input"
-            onChange={importData}
-            accept=".json"
-          /> */}
           <button
             type="button"
             onClick={toggleTheme}

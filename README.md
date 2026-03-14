@@ -45,6 +45,8 @@ Abra o SQL Editor do seu painel Supabase.
 
 Execute o script base localizado em supabase/security_policies.sql.
 
+Para categorias personalizadas por usuário, execute também o script supabase/create_transaction_categories_table.sql.
+
 O que este script faz:
 
 Habilita a política de Row Level Security (RLS) nas tabelas transactions e profiles.

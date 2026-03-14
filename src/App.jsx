@@ -19,18 +19,15 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Rotas Públicas */}
         <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
         <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
 
-        {/* Redirecionamento Baseado em Role */}
         <Route path="/" element={
           user ? (
             profile?.role === 'admin' ? <Navigate to="/admin" /> : <Navigate to="/dashboard" />
           ) : <Navigate to="/login" />
         } />
 
-        {/* Rotas de Usuário */}
         <Route path="/dashboard" element={user ? <UserLayout /> : <Navigate to="/login" />}>
           <Route index element={<DashboardHome />} />
           <Route path="planejamento" element={<Planning />} />
@@ -40,7 +37,6 @@ export default function App() {
           <Route path="relatorios" element={<Reports />} />
         </Route>
 
-        {/* Rotas de Admin */}
         <Route path="/admin" element={profile?.role === 'admin' ? <AdminDashboard /> : <Navigate to="/" />} />
       </Routes>
     </BrowserRouter>

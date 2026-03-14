@@ -1,5 +1,9 @@
 import { supabase } from '../../lib/supabase';
 
+function isMissingPaidMonthsColumn(error) {
+  return error?.code === 'PGRST204' && String(error?.message || '').includes('paid_months');
+}
+
 export const transactionService = {
   async getAuthenticatedUserId() {
     const {
@@ -27,13 +31,17 @@ export const transactionService = {
     return data;
   },
 
-  // Adicionar novo lançamento (suporta objeto único ou array)
   async addTransaction(transactionData) {
     const userId = await this.getAuthenticatedUserId();
 
+    const normalizeItem = (item) => ({
+      ...item,
+      user_id: userId,
+    });
+
     const payload = Array.isArray(transactionData)
-      ? transactionData.map((item) => ({ ...item, user_id: userId }))
-      : [{ ...transactionData, user_id: userId }];
+      ? transactionData.map((item) => normalizeItem(item))
+      : [normalizeItem(transactionData)];
 
     const { data, error } = await supabase
       .from('transactions')
@@ -98,5 +106,52 @@ export const transactionService = {
       .eq('installment_group_id', installmentGroupId);
 
     if (error) throw error;
+  },
+
+  async updateTransactionPaidStatus(id, isPaid) {
+    const userId = await this.getAuthenticatedUserId();
+
+    const { error } = await supabase
+      .from('transactions')
+      .update({ is_paid: Boolean(isPaid) })
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    return true;
+  },
+
+  async updateRecurringMonthPaidStatus(id, monthKey, isPaid, currentPaidMonths = []) {
+    const userId = await this.getAuthenticatedUserId();
+
+    const normalizedMonth = String(monthKey || '').trim();
+    if (!/^\d{4}-\d{2}$/.test(normalizedMonth)) {
+      throw new Error('Mês inválido para atualização de recorrência.');
+    }
+
+    const baseMonths = Array.isArray(currentPaidMonths)
+      ? currentPaidMonths.map((item) => String(item))
+      : [];
+
+    const nextMonths = isPaid
+      ? [...new Set([...baseMonths, normalizedMonth])]
+      : baseMonths.filter((item) => item !== normalizedMonth);
+
+    const { error } = await supabase
+      .from('transactions')
+      .update({ paid_months: nextMonths })
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (!error) {
+      return { degraded: false };
+    }
+
+    if (isMissingPaidMonthsColumn(error)) {
+      await this.updateTransactionPaidStatus(id, isPaid);
+      return { degraded: true };
+    }
+
+    throw error;
   }
 };

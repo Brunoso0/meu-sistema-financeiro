@@ -14,6 +14,8 @@ import {
 import { authService } from '../../shared/services/authService';
 import { useAuth } from '../../shared/hooks/useAuth';
 import { toast } from 'react-toastify';
+import { usePWAInstall } from '../../shared/hooks/usePWAInstall';
+import PWAInstallModal from '../../shared/components/PWAInstallModal';
 import '../styles/clareza.css';
 
 const navItems = [
@@ -28,6 +30,7 @@ const navItems = [
 export default function UserLayout() {
   const { profile } = useAuth();
   const [theme, setTheme] = useState(() => localStorage.getItem('dashboard-theme') || 'light');
+  const { showInstallPrompt, showIOSGuide, isIOSDevice, install, dismiss } = usePWAInstall();
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -45,6 +48,17 @@ export default function UserLayout() {
 
   return (
     <div className="clar-layout-root">
+      {(showInstallPrompt || showIOSGuide) && (
+        <PWAInstallModal
+          isIOSDevice={isIOSDevice}
+          onInstall={async () => {
+            const accepted = await install();
+            if (accepted) toast.success('App instalado com sucesso!');
+          }}
+          onDismiss={dismiss}
+        />
+      )}
+
       <aside className="clar-sidebar">
         <div className="clar-logo">
           <TrendingUp size={18} />

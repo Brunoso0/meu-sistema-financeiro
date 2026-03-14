@@ -17,8 +17,39 @@ function addMonths(baseDate, monthsToAdd) {
   return new Date(year, month, 1);
 }
 
+function parseMoneyInput(value) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : NaN;
+  }
+
+  if (typeof value !== 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  }
+
+  const sanitized = value.trim().replace(/\s/g, '').replace(/[^\d,.-]/g, '');
+  if (!sanitized) return NaN;
+
+  const lastComma = sanitized.lastIndexOf(',');
+  const lastDot = sanitized.lastIndexOf('.');
+
+  let normalized = sanitized;
+  if (lastComma > -1 || lastDot > -1) {
+    const decimalSeparator = lastComma > lastDot ? ',' : '.';
+    const thousandSeparator = decimalSeparator === ',' ? '.' : ',';
+
+    normalized = normalized.split(thousandSeparator).join('');
+    if (decimalSeparator === ',') {
+      normalized = normalized.replace(',', '.');
+    }
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : NaN;
+}
+
 export function calculateInstallmentAmounts(totalAmount, installments, monthlyInterestRate) {
-  const principal = Number(totalAmount);
+  const principal = parseMoneyInput(totalAmount);
   const totalInstallments = Number(installments);
   const rate = Number(monthlyInterestRate) / 100;
 

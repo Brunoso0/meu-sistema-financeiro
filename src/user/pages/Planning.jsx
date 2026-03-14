@@ -6,6 +6,7 @@ import { formatBRL } from '../utils/finance';
 import { toast } from 'react-toastify';
 
 export default function Planning() {
+  const [planningLoading, setPlanningLoading] = useState(true);
   const [profile, setProfile] = useState(null);
   const [goals, setGoals] = useState([]);
   const [editing, setEditing] = useState(false);
@@ -28,6 +29,7 @@ export default function Planning() {
 
   useEffect(() => {
     async function load() {
+      setPlanningLoading(true);
       const [profileData, goalsData] = await Promise.all([
         profileService.getProfile().catch(() => null),
         goalsService.getGoals().catch(() => []),
@@ -44,6 +46,7 @@ export default function Planning() {
       }
 
       setGoals(goalsData || []);
+      setPlanningLoading(false);
     }
 
     load();
@@ -140,42 +143,54 @@ export default function Planning() {
       <section className="clar-two-cols planning">
         <div className="clar-card">
           <h2>Distribuição de Renda</h2>
+          {planningLoading ? (
+            <div className="clar-planning-skeleton">
+              <span className="clar-skeleton-line" style={{ width: '100%', height: 42 }} />
+              <span className="clar-skeleton-line" style={{ width: '94%', height: 10 }} />
+              <span className="clar-skeleton-line" style={{ width: '100%', height: 42 }} />
+              <span className="clar-skeleton-line" style={{ width: '91%', height: 10 }} />
+              <span className="clar-skeleton-line" style={{ width: '100%', height: 42 }} />
+              <span className="clar-skeleton-line" style={{ width: '88%', height: 10 }} />
+            </div>
+          ) : (
+            <>
+              <div className="clar-plan-row">
+                <div>
+                  <strong>Necessidades</strong>
+                  <p>Aluguel, contas, alimentação básica, saúde.</p>
+                </div>
+                <div className="clar-plan-right">
+                  <span>{form.percent_needs}%</span>
+                  <strong>{formatBRL(distribution.needs)}</strong>
+                </div>
+              </div>
+              <div className="clar-progress-track"><div style={{ width: `${form.percent_needs}%` }} /></div>
 
-          <div className="clar-plan-row">
-            <div>
-              <strong>Necessidades</strong>
-              <p>Aluguel, contas, alimentação básica, saúde.</p>
-            </div>
-            <div className="clar-plan-right">
-              <span>{form.percent_needs}%</span>
-              <strong>{formatBRL(distribution.needs)}</strong>
-            </div>
-          </div>
-          <div className="clar-progress-track"><div style={{ width: `${form.percent_needs}%` }} /></div>
+              <div className="clar-plan-row">
+                <div>
+                  <strong>Desejos</strong>
+                  <p>Lazer, hobbies, assinaturas.</p>
+                </div>
+                <div className="clar-plan-right amber">
+                  <span>{form.percent_wants}%</span>
+                  <strong>{formatBRL(distribution.wants)}</strong>
+                </div>
+              </div>
+              <div className="clar-progress-track amber"><div style={{ width: `${form.percent_wants}%` }} /></div>
 
-          <div className="clar-plan-row">
-            <div>
-              <strong>Desejos</strong>
-              <p>Lazer, hobbies, assinaturas.</p>
-            </div>
-            <div className="clar-plan-right amber">
-              <span>{form.percent_wants}%</span>
-              <strong>{formatBRL(distribution.wants)}</strong>
-            </div>
-          </div>
-          <div className="clar-progress-track amber"><div style={{ width: `${form.percent_wants}%` }} /></div>
-
-          <div className="clar-plan-row">
-            <div>
-              <strong>Dívidas e Investimentos</strong>
-              <p>Reserva, aposentadoria e quitação.</p>
-            </div>
-            <div className="clar-plan-right green">
-              <span>{form.percent_investments}%</span>
-              <strong>{formatBRL(distribution.investments)}</strong>
-            </div>
-          </div>
-          <div className="clar-progress-track green"><div style={{ width: `${form.percent_investments}%` }} /></div>
+              <div className="clar-plan-row">
+                <div>
+                  <strong>Dívidas e Investimentos</strong>
+                  <p>Reserva, aposentadoria e quitação.</p>
+                </div>
+                <div className="clar-plan-right green">
+                  <span>{form.percent_investments}%</span>
+                  <strong>{formatBRL(distribution.investments)}</strong>
+                </div>
+              </div>
+              <div className="clar-progress-track green"><div style={{ width: `${form.percent_investments}%` }} /></div>
+            </>
+          )}
         </div>
 
         <div className="clar-col-stack">
@@ -201,7 +216,7 @@ export default function Planning() {
                   type="number"
                   value={form.base_income}
                   onChange={(e) => setForm((prev) => ({ ...prev, base_income: e.target.value }))}
-                  disabled={!editing}
+                  disabled={planningLoading || !editing}
                 />
               </label>
             </div>
@@ -212,7 +227,7 @@ export default function Planning() {
                   type="number"
                   value={form.percent_needs}
                   onChange={(e) => setForm((prev) => ({ ...prev, percent_needs: e.target.value }))}
-                  disabled={!editing}
+                  disabled={planningLoading || !editing}
                 />
               </label>
               <label>Des.
@@ -220,7 +235,7 @@ export default function Planning() {
                   type="number"
                   value={form.percent_wants}
                   onChange={(e) => setForm((prev) => ({ ...prev, percent_wants: e.target.value }))}
-                  disabled={!editing}
+                  disabled={planningLoading || !editing}
                 />
               </label>
               <label>Inv.
@@ -228,12 +243,12 @@ export default function Planning() {
                   type="number"
                   value={form.percent_investments}
                   onChange={(e) => setForm((prev) => ({ ...prev, percent_investments: e.target.value }))}
-                  disabled={!editing}
+                  disabled={planningLoading || !editing}
                 />
               </label>
             </div>
 
-            {editing && (
+            {editing && !planningLoading && (
               <button type="button" className="clar-primary-btn full" onClick={saveConfig}>
                 Salvar Alterações
               </button>
@@ -245,7 +260,13 @@ export default function Planning() {
       <section className="clar-card">
         <h2>Metas de Curto Prazo</h2>
         <div className="clar-goals-list">
-          {goals.length === 0 ? (
+          {planningLoading ? (
+            <div className="clar-planning-goals-skeleton">
+              <span className="clar-skeleton-line" style={{ width: '100%', height: 56 }} />
+              <span className="clar-skeleton-line" style={{ width: '100%', height: 56 }} />
+              <span className="clar-skeleton-line" style={{ width: '100%', height: 56 }} />
+            </div>
+          ) : goals.length === 0 ? (
             <p className="clar-empty">Nenhuma meta cadastrada ainda.</p>
           ) : (
             goals.map((goal) => {

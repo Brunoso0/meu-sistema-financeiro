@@ -19,9 +19,15 @@ const categoryColors = ['#10b981', '#ef4444', '#2563eb', '#f59e0b', '#8b5cf6', '
 
 export default function Reports() {
   const [transactions, setTransactions] = React.useState([]);
+  const [reportsLoading, setReportsLoading] = React.useState(true);
 
   React.useEffect(() => {
-    transactionService.getTransactions().then((data) => setTransactions(data || [])).catch(() => setTransactions([]));
+    setReportsLoading(true);
+    transactionService
+      .getTransactions()
+      .then((data) => setTransactions(data || []))
+      .catch(() => setTransactions([]))
+      .finally(() => setReportsLoading(false));
   }, []);
 
   const categoryData = useMemo(() => {
@@ -62,7 +68,9 @@ export default function Reports() {
       <section className="clar-two-cols">
         <article className="clar-card">
           <h2>Gastos por Categoria</h2>
-          {categoryData.length === 0 ? (
+          {reportsLoading ? (
+            <div className="clar-report-chart-skeleton" />
+          ) : categoryData.length === 0 ? (
             <p className="clar-empty">Sem despesas para montar o gráfico de categorias.</p>
           ) : (
             <div className="clar-rechart-box">
@@ -100,7 +108,9 @@ export default function Reports() {
 
         <article className="clar-card">
           <h2>Renda vs Despesas</h2>
-          {monthly.length === 0 ? (
+          {reportsLoading ? (
+            <div className="clar-report-chart-skeleton" />
+          ) : monthly.length === 0 ? (
             <p className="clar-empty">Sem histórico mensal suficiente para exibir o gráfico.</p>
           ) : (
             <div className="clar-rechart-box">
@@ -134,11 +144,19 @@ export default function Reports() {
 
       <section className="clar-card">
         <h2>Insights Financeiros</h2>
-        <div className="clar-insights-grid">
-          <div className="insight success">Economia em Alta<br /><small>Seus gastos de lazer reduziram em relação ao mês anterior.</small></div>
-          <div className="insight brand">Meta de Investimento<br /><small>Você está próximo de cumprir sua meta mensal de aportes.</small></div>
-          <div className="insight danger">Alerta de Categoria<br /><small>Alimentação aumentou acima da média recente.</small></div>
-        </div>
+        {reportsLoading ? (
+          <div className="clar-report-insights-skeleton">
+            <span className="clar-skeleton-line" style={{ width: '100%', height: 62 }} />
+            <span className="clar-skeleton-line" style={{ width: '100%', height: 62 }} />
+            <span className="clar-skeleton-line" style={{ width: '100%', height: 62 }} />
+          </div>
+        ) : (
+          <div className="clar-insights-grid">
+            <div className="insight success">Economia em Alta<br /><small>Seus gastos de lazer reduziram em relação ao mês anterior.</small></div>
+            <div className="insight brand">Meta de Investimento<br /><small>Você está próximo de cumprir sua meta mensal de aportes.</small></div>
+            <div className="insight danger">Alerta de Categoria<br /><small>Alimentação aumentou acima da média recente.</small></div>
+          </div>
+        )}
       </section>
     </div>
   );
