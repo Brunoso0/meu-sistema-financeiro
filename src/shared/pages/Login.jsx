@@ -16,6 +16,8 @@ export default function Login() {
   const [loginError, setLoginError] = useState('');
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [blockedUntil, setBlockedUntil] = useState(0);
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
 
   const remainingBlockSeconds = Math.max(0, Math.ceil((blockedUntil - Date.now()) / 1000));
   const isBlocked = remainingBlockSeconds > 0;
@@ -81,6 +83,22 @@ export default function Login() {
       } else {
         toast.error('Não foi possível concluir o cadastro. Verifique os dados e tente novamente.');
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSendReset = async () => {
+    try {
+      const emailToSend = forgotEmail || formData.email;
+      if (!emailToSend) return toast.error('Informe o e-mail para recuperação.');
+      setLoading(true);
+      await authService.sendPasswordReset(emailToSend);
+      toast.success('E-mail de recuperação enviado. Verifique sua caixa de entrada.');
+      setShowForgot(false);
+      setForgotEmail('');
+    } catch (error) {
+      toast.error('Não foi possível enviar o e-mail de recuperação.');
     } finally {
       setLoading(false);
     }
@@ -176,6 +194,30 @@ export default function Login() {
               <Button type="submit" icon={Lock} className="login-submit-btn">
                 {loading ? 'Entrando...' : isBlocked ? `Aguarde ${remainingBlockSeconds}s` : 'Entrar no Sistema'}
               </Button>
+
+              <div className="forgot-row">
+                {!showForgot ? (
+                  <button type="button" className="forgot-btn" onClick={() => setShowForgot(true)}>
+                    Esqueci minha senha
+                  </button>
+                ) : (
+                  <div className="forgot-form">
+                    <input
+                      type="email"
+                      placeholder="Seu e-mail"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                    />
+                    <Button type="button" onClick={handleSendReset} className="forgot-send-btn">
+                      {loading ? 'Enviando...' : 'Enviar'
+                      }
+                    </Button>
+                    <button type="button" className="forgot-cancel" onClick={() => setShowForgot(false)}>
+                      Cancelar
+                    </button>
+                  </div>
+                )}
+              </div>
             </form>
           )}
 

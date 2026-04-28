@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './shared/pages/Login.jsx';
 import Register from './shared/pages/Register.jsx';
+import ResetPassword from './shared/pages/ResetPassword.jsx';
 import AdminDashboard from './admin/pages/Dashboard.jsx';
 import { useAuth } from './shared/hooks/useAuth';
 import UserLayout from './user/components/UserLayout.jsx';
@@ -21,6 +22,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
         <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         <Route path="/" element={
           user ? (

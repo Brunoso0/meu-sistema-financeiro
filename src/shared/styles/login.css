@@ -11,7 +11,7 @@
 
 .login-wrapper {
   width: 100%;
-  max-width: 430px;
+  max-width: 440px;
 }
 
 .login-brand {
@@ -20,11 +20,11 @@
 }
 
 .login-brand-icon {
-  width: 72px;
-  height: 72px;
-  border-radius: 18px;
-  background: #d1fae5;
-  color: #059669;
+  width: 80px;
+  height: 80px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
+  color: #047857;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -46,12 +46,16 @@
 }
 
 .login-card {
-  background: var(--color-bg-primary);
-  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
   border-radius: 14px;
-  padding: 2rem;
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
-  transition: background-color 0.3s ease, border-color 0.3s ease;
+  padding: 2.25rem;
+  box-shadow: 0 12px 30px rgba(2,6,23,0.06);
+  transition: background-color 0.3s ease, border-color 0.3s ease, transform 0.12s ease;
+}
+
+.login-card:hover {
+  transform: translateY(-4px);
 }
 
 .login-form {
@@ -90,6 +94,46 @@
   border-color: #059669;
   box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.14);
   background: var(--color-bg-primary);
+}
+
+.forgot-row {
+  margin-top: 0.6rem;
+}
+
+.forgot-btn {
+  border: none;
+  background: transparent;
+  color: #059669;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.9rem;
+}
+
+.forgot-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.6rem;
+}
+
+.forgot-form input {
+  height: 40px;
+  padding: 0 0.6rem;
+  border-radius: 8px;
+}
+
+.forgot-send-btn {
+  padding: 0.45rem 0.8rem;
+  height: 40px;
+}
+
+.forgot-cancel {
+  background: transparent;
+  border: none;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  font-size: 0.9rem;
 }
 
 .login-error-box {
